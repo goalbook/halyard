@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/coreos/go-etcd/etcd"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/nu7hatch/gouuid"
@@ -16,6 +17,7 @@ import (
 )
 
 var config *Config
+var etcdClient *etcd.Client
 
 type Config struct {
 	ServerPort         string
@@ -49,42 +51,29 @@ func readConfig(c *Config) error {
 	return nil
 }
 
-// {
-//   'repository': 'mynamespace/repository',
-//   'namespace': 'mynamespace',
-//   'name': 'repository',
-//   'docker_url': 'quay.io/mynamespace/repository',
-//   'homepage': 'https://quay.io/repository/mynamespace/repository/build?current=some-fake-build',
-//   'visibility': 'public',
-
-//   'build_id': build_uuid,
-//   'build_name': 'some-fake-build',
-//   'docker_tags': ['latest', 'foo', 'bar'],
-//   'trigger_kind': 'github'
-
-// }
-
-//{"build_id": "fake-build-id", "trigger_kind": "GitHub", "name": "halyard", "repository": "goalbook/halyard", "namespace": "goalbook", "docker_url": "quay.io/goalbook/halyard", "visibility": "public", "docker_tags": ["latest", "foo", "bar"], "build_name": "some-fake-build", "image_id": "1245657346", "trigger_metadata": {"default_branch": "master", "ref": "refs/heads/somebranch", "commit_sha": "42d4a62c53350993ea41069e9f2cfdefb0df097d"}, "homepage": "https://quay.io/repository/goalbook/halyard/build?current=fake-build-id"}
-
 type QuayBuildSuccessHook struct {
 	Repository  string   `json:"repository"`
 	Namespace   string   `json:"namespace"`
 	Name        string   `json:"name"`
 	DockerURL   string   `json:"docker_url"`
+	DockerTags  []string `json:"docker_tags"`
 	Homepage    string   `json:"homepage"`
 	Visibility  string   `json:"visibility"`
+	ImageId     string   `json:"image_id"`
 	BuildId     string   `json:"build_id"`
 	BuildName   string   `json:"build_name"`
-	DockerTags  []string `json:"docker_tags"`
+	TriggerId   string   `json:"trigger_id"`
 	TriggerKind string   `json:"trigger_kind"`
 }
 
 func main() {
-	config := &Config{}
+	config = &Config{}
 	err := readConfig(config)
 	if err != nil {
 		log.Panicf("Error occurred in config: %v", err)
 	}
+
+	etcdClient = etcd.NewClient([]string{config.EtcdURL})
 
 	r := mux.NewRouter()
 
@@ -112,9 +101,35 @@ func QuayBuildSuccessPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("quay hook: %v", body)
 
+	WriteEtcd(etcdClient, &body)
 	res := map[string]string{}
 	res["status"] = "ok"
 	WriteResponseJSON(w, 200, res)
+}
+
+func WriteEtcd(c *etcd.Client, b *QuayBuildSuccessHook) error {
+	details, _ := json.Marshal(b)
+	for i := 0; i < len(b.DockerTags); i++ {
+		tag := b.DockerTags[i]
+		keyprefix := fmt.Sprintf("/containers/%s/%s", b.DockerURL, tag)
+		if _, err := c.Set(fmt.Sprintf("%s/image", keyprefix), b.ImageId, 0); err != nil {
+			log.Printf("Error writing to etcd: %v", err)
+			return err
+		}
+		if _, err := c.Set(fmt.Sprintf("%s/build", keyprefix), b.BuildId, 0); err != nil {
+			log.Printf("Error writing to etcd: %v", err)
+			return err
+		}
+		if _, err := c.Set(fmt.Sprintf("%s/trigger", keyprefix), b.TriggerId, 0); err != nil {
+			log.Printf("Error writing to etcd: %v", err)
+			return err
+		}
+		if _, err := c.Set(fmt.Sprintf("%s/details", keyprefix), string(details), 0); err != nil {
+			log.Printf("Error writing to etcd: %v", err)
+			return err
+		}
+	}
+	return nil
 }
 
 func UUID() string {
