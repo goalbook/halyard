@@ -36,7 +36,7 @@ func MockQuayBuildSuccessHook() QuayBuildSuccessHook {
 	body.DockerURL = "quay.io/mynamespace/repository"
 	body.Homepage = "https://quay.io/repository/mynamespace/repository/build?current=some-fake-build"
 	body.Visibility = "public"
-	body.BuildId = "build_uuid"
+	body.BuildId = "dba8aa95-4de5-4a09-8d87-1527eaa4856a"
 	body.BuildName = "some-fake-build"
 	body.DockerTags = []string{"latest", "foo", "bar"}
 	body.TriggerKind = "github"

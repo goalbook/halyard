@@ -64,6 +64,8 @@ func readConfig(c *Config) error {
 
 // }
 
+//{"build_id": "fake-build-id", "trigger_kind": "GitHub", "name": "halyard", "repository": "goalbook/halyard", "namespace": "goalbook", "docker_url": "quay.io/goalbook/halyard", "visibility": "public", "docker_tags": ["latest", "foo", "bar"], "build_name": "some-fake-build", "image_id": "1245657346", "trigger_metadata": {"default_branch": "master", "ref": "refs/heads/somebranch", "commit_sha": "42d4a62c53350993ea41069e9f2cfdefb0df097d"}, "homepage": "https://quay.io/repository/goalbook/halyard/build?current=fake-build-id"}
+
 type QuayBuildSuccessHook struct {
 	Repository  string   `json:"repository"`
 	Namespace   string   `json:"namespace"`
@@ -122,7 +124,7 @@ func UUID() string {
 
 func DecodeJSONBody(r *http.Request, v interface{}) error {
 	if r.Method == "POST" || r.Method == "PUT" {
-		if strings.ToLower(r.Header.Get("Content-Type")) == "application/json;charset=utf-8" {
+		if strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
 			bytes, err := ioutil.ReadAll(r.Body)
 			if err != nil {
 				return err
