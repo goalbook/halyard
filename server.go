@@ -108,7 +108,10 @@ func QuayBuildSuccessPostHandler(w http.ResponseWriter, r *http.Request) {
 	body := QuayBuildSuccessHook{}
 	_ = DecodeJSONBody(r, &body)
 
+	log.Printf("quay hook: %v", body)
+
 	res := map[string]string{}
+	res["status"] = "ok"
 	WriteResponseJSON(w, 200, res)
 }
 
